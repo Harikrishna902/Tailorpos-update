@@ -454,8 +454,8 @@
                         </div>
                     @endif
                     <input type="hidden" id="inv_id" value="{{ $inv_id }}">
-                    <div class="modal-footer">
-                        <button class="btn btn-light text-primary" type="button" data-bs-dismiss="modal"
+                   <div class="modal-footer"> 
+                        <button wire:click="sendOrderCreationNotification" class="btn btn-light text-primary" type="button" data-bs-dismiss="modal"
                             wire:click.prevent="save(1)" wire:loading.attr="disabled"
                             wire:target="save">{{ __('main.save_invoice') }}</button>
                         <button class="btn btn-primary" type="submit" wire:click.prevent="save(2)"

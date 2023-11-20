@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\Translation;
 use App\Models\User;
 use Carbon\Carbon;
+use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
@@ -493,7 +494,7 @@ class Invoices extends Component
             $this->inv_id=$invoice->id;
             $this->emit('printWindow');
         }
-        
+        $this->sendOrderCreationNotification();
     }
 
     // Create a new customer.
@@ -511,6 +512,10 @@ class Invoices extends Component
                         ->where('created_by', Auth::user()->id)
             ],
         ]);
+        $countryCode = getCountryCode(); 
+
+        // Concatenate the country code with the provided phone number
+        $phoneNumber = $countryCode . $this->phone_number_1;
         $user = Auth::user();
         $customer = Customer::create([
             'date' =>  Carbon::today(),
@@ -518,7 +523,7 @@ class Invoices extends Component
             'first_name' => $this->first_name,
             'second_name' => $this->second_name,
             'family_name' => $this->family_name,
-            'phone_number_1' => $this->phone_number_1,
+            'phone_number_1' => $phoneNumber,
             'phone_number_2' => $this->phone_number_2,
             'is_active' => $this->is_active??0,
             'address' => $this->address,
@@ -588,5 +593,109 @@ class Invoices extends Component
         $this->matqty[ $this->editkey] = $this->material_qty;
         $this->emit('closemodal');
         $this->calculateTotal();
+    }
+
+    /**
+     *  purpose   : program to implement Whatsapp Integration 
+     * @author   : harikrishna
+     * @method : function to  create sendOrderCreationNotification
+     *  @since    : 16-11-2023
+     */
+    public function sendOrderCreationNotification()
+    {
+    
+        $url = 'https://graph.facebook.com/v17.0/178746198644829/messages';
+        $accessToken = 'EAAjZBhaxod58BO7k0Q6k3ZC90gBWDKmxpplUnvLu84Sx1lB52Y7LIA9I1A4rTKBnsa9IUUh0hOZCrESQedPjnLgU8hZCoRvBv9IWI2vdIZCmZCNqfJZAKEQHtX04jBUOAAkyMvmY9Y9Jl5cdQ2EjNTylXsaLDZCHauBfAXEyGVYUJTrqjAG9TmSaxXZA8r6m3ubmn';
+        //$phoneNumber = "+919501945864"; // Replace with the customer's phone number
+        $client = new Client();
+
+     
+        $order = Invoice::orderBy('created_at', 'desc')->first();
+        // Check if the order exists
+        if (!$order) {
+            session()->flash('error', 'Order not found.'); 
+            return;
+            
+        }
+        // Accessing invoice payments based on the invoice ID
+        $invoicePayments = InvoicePayment::where('invoice_id', $order->id)->get();
+
+        
+
+        // Retrieve the associated customer
+       $customer = $order->customer; // Assuming the relationship is defined
+
+        if (!$customer) {
+            session()->flash('error', 'Customer details not found for this invoice.');
+            return;
+        }
+
+        //Access order details
+        
+        $phoneNumber = $customer->phone_number_1;
+        $orderNumber = $order->invoice_number;
+        $customerName = $order->customer_name;
+        $subTotal = $order->sub_total; 
+        $taxAmount = $order->tax_amount;
+        $total = $order->total;
+        $totalPaidAmount = $invoicePayments->sum('paid_amount');
+        $Balance = $total -  $totalPaidAmount;
+
+        // Your dynamic URL
+        //$dynamicUrl = "https://tailorpos.nshinetechnologies.com/";
+
+        // Build the message
+        $messageText = "🎉 Dear $customerName! \n".
+                        " We're thrilled to confirm your order ($orderNumber)! 🎁\n\n" .
+                        "🛍 Order Summary:\n" .
+                        "   - Subtotal: $subTotal\n" .
+                        "   - Tax Amount: $taxAmount\n" .
+                        "   - Total: $total\n\n" .
+                        "   - Paid: $totalPaidAmount\n" .
+                        "   - Remaining Balance: $Balance\n" .
+                        "🚀 Your order is being prepared meticulously for a delightful experience.\n" .
+                        " 📞 Feel free to reach us at +919996665515 if you need any assistance.\n".
+                        //"🌐 Visit us: $dynamicUrl\n\n" .
+                        "🙏 Thank you for choosing us! We're eagerly preparing your order and looking forward to serving you again soon. 😊";
+
+
+
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $accessToken
+        ];
+
+        $message = [
+            "messaging_product" => "whatsapp",
+            "to" => $phoneNumber,
+            "type" => "text",
+            "text" => [
+                "body" => $messageText
+            ]
+
+        ];
+
+        try {
+            $response = $client->post($url, [
+                'headers' => $headers,
+                'json' => $message,
+            ]);
+            
+            // Handle success response
+            session()->flash('success', 'Order creation notification sent successfully!');
+
+            //Dispatch a browser event on success
+            $this->dispatchBrowserEvent('order-creation-notification-sent', [
+                'type' => 'success',
+                'title' => 'Success',
+                'message' => 'Order creation notification sent successfully!'
+            ]);
+            
+        
+            } catch (RequestException $e) {
+            // Handle error response
+        
+            session()->flash('error', 'Failed to send order creation notification.');
+           } 
     }
 }
